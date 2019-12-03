@@ -22,7 +22,7 @@ public class ServerDH {
         try {
             Server server = new Server(5000);
         } catch (IOException ex) {
-            System.out.println("there was a error in creating the server");
+            System.out.println("there was a error in creating the server " + ex.toString());
         }
     }
     

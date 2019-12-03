@@ -29,8 +29,22 @@ public class Server {
             System.out.println("Waiting for a client ...");
             
             socket = server.accept();
-            System.out.println("Client accepted");
-
+            System.out.println("Client accepted" + socket.getRemoteSocketAddress().toString());
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            System.out.println(socket.getInputStream().toString());
             // takes input from the client socket 
             in = new DataInputStream(
                     new BufferedInputStream(socket.getInputStream()));
