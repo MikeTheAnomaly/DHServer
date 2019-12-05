@@ -49,7 +49,7 @@ public class Server {
         out = socket.getOutputStream();
 
         try {
-            KeyCreation(out);
+            KeyCreation();
         } catch (NoSuchAlgorithmException ex) {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         } catch (InvalidKeyException ex) {
@@ -78,7 +78,7 @@ public class Server {
         return true;
     }
 
-    private byte[] KeyCreation(OutputStream out) throws NoSuchAlgorithmException, InvalidKeyException, IOException {
+    private byte[] KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException {
         /*
          * Alice creates her own DH key pair with 2048-bit key size
          */
