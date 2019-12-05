@@ -14,13 +14,20 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  *
@@ -34,7 +41,9 @@ public class Server {
     private InputStream fileIn = null;
     private BufferedInputStream networkIn = null;
     private OutputStream out = null;
-    private BufferedReader br = null;
+    private InputStream in = null;
+    
+    private byte[] clientPubKeyEnc;
 
     // constructor with port 
     public Server(int port) throws IOException {
@@ -44,9 +53,10 @@ public class Server {
         socket = serverSocket.accept();
         System.out.println("Connected to Client");
 
-        fileIn = new DataInputStream(socket.getInputStream());
+        //fileIn = new DataInputStream(socket.getInputStream());
 
         out = socket.getOutputStream();
+        in = socket.getInputStream();
 
         try {
             KeyCreation();
@@ -54,10 +64,12 @@ public class Server {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         } catch (InvalidKeyException ex) {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (InvalidKeySpecException ex) {
+            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         }
 
         out.close();
-        fileIn.close();
+        //fileIn.close();
         socket.close();
         serverSocket.close();
     }
@@ -78,7 +90,7 @@ public class Server {
         return true;
     }
 
-    private byte[] KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException {
+    private byte[] KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException, InvalidKeySpecException {
         /*
          * Alice creates her own DH key pair with 2048-bit key size
          */
@@ -98,17 +110,91 @@ public class Server {
         //for debugging purposes, let's print out Alice's encode public key
         System.out.println("Alice's Public Key for Transmit:");
         System.out.println(toHexString(alicePubKeyEnc));
-        int size = alicePubKeyEnc.length;
+        
+        sendToClient(alicePubKeyEnc);
+        
+        
+        clientPubKeyEnc = ReadFromClient();
+        KeyFactory aliceKeyFactory = KeyFactory.getInstance("DH");
+        X509EncodedKeySpec x509KeySpec = new X509EncodedKeySpec(clientPubKeyEnc);
+        PublicKey bobPubKey = aliceKeyFactory.generatePublic(x509KeySpec);
+        System.out.println("ALICE: Execute PHASE1 ...");
+        aliceKeyAgree.doPhase(bobPubKey, true);
+        
+        byte[] aliceSharedSecret = aliceKeyAgree.generateSecret(); // provide output buffer of required size
+        
+        System.out.println("The shared key is: " + toHexString(aliceSharedSecret));
+        SecretKeySpec bobAESKey = new SecretKeySpec(aliceSharedSecret, 0, 16, "AES");
+        
+        Cipher bobCipher = null;
+        try {
+            bobCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        } catch (NoSuchPaddingException ex) {
+            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        bobCipher.init(Cipher.ENCRYPT_MODE, bobAESKey);
+        
+        sendToClient(bobCipher.getParameters().getEncoded());
+        
+        sendToClient("1: This is some text \n2: wow".getBytes());
+        
+        return alicePubKeyEnc;
+        
+        
+        
+    }
+    
+//    private byte[] encryptesData(bytes[] bytestoencrypt){
+//        Cipher bobCipher;
+//        try {
+//            bobCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+//        } catch (NoSuchAlgorithmException ex) {
+//            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+//        } catch (NoSuchPaddingException ex) {
+//            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+//        }
+//        bobCipher.init(Cipher.ENCRYPT_MODE, bobAESKey);
+//        byte[] cleartext = "This is just an example".getBytes();
+//        byte[] ciphertext = bobCipher.doFinal(cleartext);
+//    }
+    
+    
+    private void sendToClient(byte[] DataToSend) throws IOException{
+        out.flush();
+        int size = DataToSend.length;
         BigInteger bi = BigInteger.valueOf(size);
         
         System.out.println(toHexString(bi.toByteArray()));
         System.out.println(size);
-        
+        if(bi.toByteArray().length < 2){
+            out.write(new byte[1]);
+        }
         out.write(bi.toByteArray());
         out.flush();
-        out.write(alicePubKeyEnc, 0, alicePubKeyEnc.length);
-        return alicePubKeyEnc;
+        out.write(DataToSend, 0, DataToSend.length);
+  
     }
+    
+    private byte[] ReadFromClient() throws IOException{
+        
+        byte[] clientData = null;
+        BigInteger bi;
+        byte[] sizeInBites = new byte[2];
+        in.read(sizeInBites);
+        //System.out.println("Clients stream Length " + toHexString(sizeInBites));
+        bi = new BigInteger(sizeInBites);
+        clientData = new byte[bi.intValue()];
+        
+        in.read(clientData);
+        
+        //System.out.println("Clients key " + toHexString(clientData));
+        
+        return clientData;
+        
+    }
+    
+    
+    
 
     private static void byte2hex(byte b, StringBuffer buf) {
         char[] hexChars = {'0', '1', '2', '3', '4', '5', '6', '7', '8',
