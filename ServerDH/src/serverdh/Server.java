@@ -34,7 +34,10 @@ import javax.crypto.spec.SecretKeySpec;
  * @author michael.hoff
  */
 public class Server {
-
+    
+    String FileDirectory = "src/serverdh/documents/";
+    
+    
     //initialize socket and input stream 
     private Socket socket = null;
     private ServerSocket serverSocket = null;
@@ -42,7 +45,7 @@ public class Server {
     private BufferedInputStream networkIn = null;
     private OutputStream out = null;
     private InputStream in = null;
-    
+
     private byte[] clientPubKeyEnc;
 
     // constructor with port 
@@ -52,8 +55,6 @@ public class Server {
         serverSocket = new ServerSocket(port);
         socket = serverSocket.accept();
         System.out.println("Connected to Client");
-
-        //fileIn = new DataInputStream(socket.getInputStream());
 
         out = socket.getOutputStream();
         in = socket.getInputStream();
@@ -81,7 +82,7 @@ public class Server {
     private boolean SendFile() throws IOException {
 
         byte[] bytes = new byte[16 * 1024];
-        //Put in seprate socket for sending data where in is fileinputstream
+
         int count;
         while ((count = fileIn.read(bytes)) > 0) {
             System.out.println("sending " + bytes.toString());
@@ -110,22 +111,21 @@ public class Server {
         //for debugging purposes, let's print out Alice's encode public key
         System.out.println("Alice's Public Key for Transmit:");
         System.out.println(toHexString(alicePubKeyEnc));
-        
+
         sendToClient(alicePubKeyEnc);
-        
-        
+
         clientPubKeyEnc = ReadFromClient();
         KeyFactory aliceKeyFactory = KeyFactory.getInstance("DH");
         X509EncodedKeySpec x509KeySpec = new X509EncodedKeySpec(clientPubKeyEnc);
         PublicKey bobPubKey = aliceKeyFactory.generatePublic(x509KeySpec);
         System.out.println("ALICE: Execute PHASE1 ...");
         aliceKeyAgree.doPhase(bobPubKey, true);
-        
+
         byte[] aliceSharedSecret = aliceKeyAgree.generateSecret(); // provide output buffer of required size
-        
+
         System.out.println("The shared key is: " + toHexString(aliceSharedSecret));
         SecretKeySpec bobAESKey = new SecretKeySpec(aliceSharedSecret, 0, 16, "AES");
-        
+
         Cipher bobCipher = null;
         try {
             bobCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
@@ -133,17 +133,18 @@ public class Server {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         }
         bobCipher.init(Cipher.ENCRYPT_MODE, bobAESKey);
-        
+
         sendToClient(bobCipher.getParameters().getEncoded());
         
-        sendToClient("1: This is some text \n2: wow".getBytes());
+        File directory = new File(FileDirectory);
+        System.out.println(getFileNames(directory));
+        String filesList = getFileNames(directory);
+        sendToClient(filesList.getBytes());
         
         return alicePubKeyEnc;
-        
-        
-        
+
     }
-    
+
 //    private byte[] encryptesData(bytes[] bytestoencrypt){
 //        Cipher bobCipher;
 //        try {
@@ -157,26 +158,23 @@ public class Server {
 //        byte[] cleartext = "This is just an example".getBytes();
 //        byte[] ciphertext = bobCipher.doFinal(cleartext);
 //    }
-    
-    
-    private void sendToClient(byte[] DataToSend) throws IOException{
-        out.flush();
+    private void sendToClient(byte[] DataToSend) throws IOException {
         int size = DataToSend.length;
         BigInteger bi = BigInteger.valueOf(size);
-        
+
         System.out.println(toHexString(bi.toByteArray()));
         System.out.println(size);
-        if(bi.toByteArray().length < 2){
+        if (bi.toByteArray().length < 2) {
             out.write(new byte[1]);
         }
         out.write(bi.toByteArray());
         out.flush();
         out.write(DataToSend, 0, DataToSend.length);
-  
+
     }
-    
-    private byte[] ReadFromClient() throws IOException{
-        
+
+    private byte[] ReadFromClient() throws IOException {
+
         byte[] clientData = null;
         BigInteger bi;
         byte[] sizeInBites = new byte[2];
@@ -184,17 +182,41 @@ public class Server {
         //System.out.println("Clients stream Length " + toHexString(sizeInBites));
         bi = new BigInteger(sizeInBites);
         clientData = new byte[bi.intValue()];
-        
+
         in.read(clientData);
-        
+
         //System.out.println("Clients key " + toHexString(clientData));
-        
         return clientData;
-        
+
     }
     
     
-    
+    /**
+     * This code snippet was found here 
+     * "https://stackoverflow.com/questions/5694385/getting-the-filenames-of-all-files-in-a-folder"
+     * edited to meet requriments
+     * @return File list with delimiter \n
+     */
+    private String getFileNames(File folder) {
+        //make sure its a directory not a file
+        if(folder.isDirectory() == false)
+            return null;
+        
+        System.out.println(folder.getAbsolutePath());
+        
+        File[] listOfFiles = folder.listFiles();
+        String files = "";
+        for (int i = 0; i < listOfFiles.length; i++) {
+            if (listOfFiles[i].isFile()) {
+                //System.out.println("File " + listOfFiles[i].getName());
+                files = files + (i+1) +": " + listOfFiles[i].getName() + "\n";
+                
+            } else if (listOfFiles[i].isDirectory()) {
+                System.out.println("Directory " + listOfFiles[i].getName());
+            }
+        }
+        return files;
+    }
 
     private static void byte2hex(byte b, StringBuffer buf) {
         char[] hexChars = {'0', '1', '2', '3', '4', '5', '6', '7', '8',
