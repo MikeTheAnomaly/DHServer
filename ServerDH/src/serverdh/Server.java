@@ -42,8 +42,6 @@ public class Server {
     //initialize socket and input stream 
     private Socket socket = null;
     private ServerSocket serverSocket = null;
-    private InputStream fileIn = null;
-    private BufferedInputStream networkIn = null;
     private OutputStream out = null;
     private InputStream in = null;
 
@@ -71,8 +69,11 @@ public class Server {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         }
 
+        System.out.println();
+
+        HandleFiles();
+
         out.close();
-        //fileIn.close();
         socket.close();
         serverSocket.close();
     }
@@ -81,7 +82,49 @@ public class Server {
         return null;
     }
 
-    private byte[] KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException, InvalidKeySpecException {
+    public void HandleFiles() throws IOException {
+        File directory = new File(FileDirectory);
+        System.out.println(getFileNames(directory));
+        String filesList = getFileNames(directory);
+        try {
+            sendToClient(filesList.getBytes());
+        } catch (IOException ex) {
+            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+        //This is not required but is good practce to allow the client to retry
+        //Though currently client does not catch its own inputmismach errors. 
+        int optionSelected = -1;
+        while (optionSelected == -1 && !socket.isClosed()) {
+            String optionSelectedString = new String(ReadFromClient());
+            if (optionSelectedString.toLowerCase().equals("done")) {
+                socket.close();
+            }
+            try {
+                optionSelected = Integer.parseInt(optionSelectedString);
+                System.out.println("option: " + optionSelected);
+                File fileToSend = getFile(new File(FileDirectory), optionSelected);
+                
+                FileInputStream fin = new FileInputStream(fileToSend);
+                byte[] fileData = new byte[(int) fileToSend.length()];
+                
+                fin.read(fileData);
+                sendToClient(encryptesData(fileData));
+
+//                    Runnable sendFile = new Runnable() {
+//                        @Override
+//                        public void run() {
+//                            sendToClient(encryptesData(getFile(new File(FileDirectory), optionSelected)));
+//                        }
+//                    };
+                optionSelected = -1;
+            } catch (NumberFormatException er) {
+                break;
+            }
+        }
+    }
+
+    private void KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException, InvalidKeySpecException {
         /*
          * Alice creates her own DH key pair with 2048-bit key size
          */
@@ -125,25 +168,20 @@ public class Server {
         //send the IV
         sendToClient(bobCipher.getParameters().getEncoded());
 
-        File directory = new File(FileDirectory);
-        System.out.println(getFileNames(directory));
-        String filesList = getFileNames(directory);
-        sendToClient(filesList.getBytes());
-
-        String optionSelectedString = new String(ReadFromClient());
-        int optionSelected = Integer.parseInt(optionSelectedString);
-        System.out.println("option: " + optionSelected);
-        return alicePubKeyEnc;
-
     }
 
-    private void encryptesData(byte[] bytestoencrypt) {
+    private byte[] encryptesData(byte[] bytestoencrypt) {
+        System.out.println("Encrypting");
+        byte[] encrypted = null;
         try {
-            bobCipher.doFinal(bytestoencrypt);
+            System.out.println(toHexString(bytestoencrypt));
+            encrypted = bobCipher.doFinal(bytestoencrypt);
+            System.out.println(toHexString(encrypted));
         } catch (Exception ex) {
             System.out.println("There was a error in encrypting that data");
             System.out.println(ex.toString());
         }
+        return encrypted;
 
     }
 
@@ -176,7 +214,6 @@ public class Server {
         clientData = new byte[bi.intValue()];
 
         in.read(clientData);
-
         //System.out.println("Clients key " + toHexString(clientData));
         return clientData;
 
@@ -202,13 +239,25 @@ public class Server {
         for (int i = 0; i < listOfFiles.length; i++) {
             if (listOfFiles[i].isFile()) {
                 //System.out.println("File " + listOfFiles[i].getName());
-                files = files + (i + 1) + ": " + listOfFiles[i].getName() + "\n";
+                files = files + i + ": " + listOfFiles[i].getName() + "\n";
 
             } else if (listOfFiles[i].isDirectory()) {
                 System.out.println("Directory " + listOfFiles[i].getName());
             }
         }
         return files;
+    }
+
+    private File getFile(File folder, int index) {
+        if (folder.isDirectory() == false) {
+            return null;
+        }
+
+        System.out.println(folder.getAbsolutePath());
+
+        File[] listOfFiles = folder.listFiles();
+        System.out.println(listOfFiles[index].getName());
+        return listOfFiles[index];
     }
 
     private static void byte2hex(byte b, StringBuffer buf) {
