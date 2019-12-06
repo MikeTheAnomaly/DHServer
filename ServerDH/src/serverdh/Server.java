@@ -24,7 +24,9 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyAgreement;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
@@ -34,10 +36,9 @@ import javax.crypto.spec.SecretKeySpec;
  * @author michael.hoff
  */
 public class Server {
-    
+
     String FileDirectory = "src/serverdh/documents/";
-    
-    
+
     //initialize socket and input stream 
     private Socket socket = null;
     private ServerSocket serverSocket = null;
@@ -47,6 +48,7 @@ public class Server {
     private InputStream in = null;
 
     private byte[] clientPubKeyEnc;
+    private Cipher bobCipher = null;
 
     // constructor with port 
     public Server(int port) throws IOException {
@@ -77,18 +79,6 @@ public class Server {
 
     private byte[] Read() {
         return null;
-    }
-
-    private boolean SendFile() throws IOException {
-
-        byte[] bytes = new byte[16 * 1024];
-
-        int count;
-        while ((count = fileIn.read(bytes)) > 0) {
-            System.out.println("sending " + bytes.toString());
-            out.write(bytes, 0, count);
-        }
-        return true;
     }
 
     private byte[] KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException, InvalidKeySpecException {
@@ -126,38 +116,37 @@ public class Server {
         System.out.println("The shared key is: " + toHexString(aliceSharedSecret));
         SecretKeySpec bobAESKey = new SecretKeySpec(aliceSharedSecret, 0, 16, "AES");
 
-        Cipher bobCipher = null;
         try {
             bobCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         } catch (NoSuchPaddingException ex) {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         }
         bobCipher.init(Cipher.ENCRYPT_MODE, bobAESKey);
-
+        //send the IV
         sendToClient(bobCipher.getParameters().getEncoded());
-        
+
         File directory = new File(FileDirectory);
         System.out.println(getFileNames(directory));
         String filesList = getFileNames(directory);
         sendToClient(filesList.getBytes());
-        
+
+        String optionSelectedString = new String(ReadFromClient());
+        int optionSelected = Integer.parseInt(optionSelectedString);
+        System.out.println("option: " + optionSelected);
         return alicePubKeyEnc;
 
     }
 
-//    private byte[] encryptesData(bytes[] bytestoencrypt){
-//        Cipher bobCipher;
-//        try {
-//            bobCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-//        } catch (NoSuchAlgorithmException ex) {
-//            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-//        } catch (NoSuchPaddingException ex) {
-//            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-//        }
-//        bobCipher.init(Cipher.ENCRYPT_MODE, bobAESKey);
-//        byte[] cleartext = "This is just an example".getBytes();
-//        byte[] ciphertext = bobCipher.doFinal(cleartext);
-//    }
+    private void encryptesData(byte[] bytestoencrypt) {
+        try {
+            bobCipher.doFinal(bytestoencrypt);
+        } catch (Exception ex) {
+            System.out.println("There was a error in encrypting that data");
+            System.out.println(ex.toString());
+        }
+
+    }
+
     private void sendToClient(byte[] DataToSend) throws IOException {
         int size = DataToSend.length;
         BigInteger bi = BigInteger.valueOf(size);
@@ -165,12 +154,15 @@ public class Server {
         System.out.println(toHexString(bi.toByteArray()));
         System.out.println(size);
         if (bi.toByteArray().length < 2) {
-            out.write(new byte[1]);
+            byte[] correctSize = new byte[2];
+            correctSize[1] = bi.toByteArray()[0];
+            out.write(correctSize);
+        } else {
+            out.write(bi.toByteArray());
         }
-        out.write(bi.toByteArray());
         out.flush();
         out.write(DataToSend, 0, DataToSend.length);
-
+        out.flush();
     }
 
     private byte[] ReadFromClient() throws IOException {
@@ -189,28 +181,29 @@ public class Server {
         return clientData;
 
     }
-    
-    
+
     /**
-     * This code snippet was found here 
+     * This code snippet was found here
      * "https://stackoverflow.com/questions/5694385/getting-the-filenames-of-all-files-in-a-folder"
      * edited to meet requriments
+     *
      * @return File list with delimiter \n
      */
     private String getFileNames(File folder) {
         //make sure its a directory not a file
-        if(folder.isDirectory() == false)
+        if (folder.isDirectory() == false) {
             return null;
-        
+        }
+
         System.out.println(folder.getAbsolutePath());
-        
+
         File[] listOfFiles = folder.listFiles();
         String files = "";
         for (int i = 0; i < listOfFiles.length; i++) {
             if (listOfFiles[i].isFile()) {
                 //System.out.println("File " + listOfFiles[i].getName());
-                files = files + (i+1) +": " + listOfFiles[i].getName() + "\n";
-                
+                files = files + (i + 1) + ": " + listOfFiles[i].getName() + "\n";
+
             } else if (listOfFiles[i].isDirectory()) {
                 System.out.println("Directory " + listOfFiles[i].getName());
             }
