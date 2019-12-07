@@ -11,7 +11,7 @@ import java.util.logging.Logger;
 
 /**
  *
- * @author michael.hoff
+ * @author michael.hoff & Ramsey Kerley
  */
 public class ServerDH {
 
@@ -22,7 +22,7 @@ public class ServerDH {
         try {
             Server server = new Server(5000);
         } catch (IOException ex) {
-            System.out.println("there was a error in creating the server " + ex.toString());
+            Logger.getLogger(ServerDH.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
