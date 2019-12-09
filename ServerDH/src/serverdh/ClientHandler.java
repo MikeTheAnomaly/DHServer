@@ -51,7 +51,7 @@ public class ClientHandler extends Thread {
     private int port;
 
     private byte[] clientPubKeyEnc;
-    private Cipher bobCipher = null;
+    private Cipher serverCipher = null;
 
     /**
      * Handles the creation of the client
@@ -70,7 +70,7 @@ public class ClientHandler extends Thread {
         try {
 
             try {
-                KeyCreation();
+                keyCreation();
             } catch (NoSuchAlgorithmException ex) {
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             } catch (InvalidKeyException ex) {
@@ -81,7 +81,7 @@ public class ClientHandler extends Thread {
 
             //System.out.println();
 
-            HandleFiles();
+            handleFiles();
 
             out.close();
             socket.close();
@@ -96,7 +96,7 @@ public class ClientHandler extends Thread {
  * the client.
  * @throws IOException 
  */
-    public void HandleFiles() throws IOException {
+    public void handleFiles() throws IOException {
         File directory = new File(FileDirectory);
         //System.out.println(getFileNames(directory));
         String filesList = getFileNames(directory);
@@ -108,7 +108,7 @@ public class ClientHandler extends Thread {
 
         int optionSelected = -1;
         while (optionSelected == -1) {
-            String optionSelectedString = new String(ReadFromClient());
+            String optionSelectedString = new String(readFromClient());
             //System.out.println(optionSelected);
             if (optionSelectedString.toLowerCase().equals("done")) {
                 socket.close();
@@ -137,49 +137,49 @@ public class ClientHandler extends Thread {
      * @throws IOException
      * @throws InvalidKeySpecException 
      */
-    private void KeyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException, InvalidKeySpecException {
+    private void keyCreation() throws NoSuchAlgorithmException, InvalidKeyException, IOException, InvalidKeySpecException {
         /*
          * Alice creates her own DH key pair with 2048-bit key size
          */
         //System.out.println("ALICE: Generate DH keypair ...");
-        KeyPairGenerator aliceKpairGen = KeyPairGenerator.getInstance("DH");
-        aliceKpairGen.initialize(2048);
-        KeyPair aliceKpair = aliceKpairGen.generateKeyPair();
+        KeyPairGenerator serverKpairGen = KeyPairGenerator.getInstance("DH");
+        serverKpairGen.initialize(2048);
+        KeyPair aliceKpair = serverKpairGen.generateKeyPair();
 
         // Alice creates and initializes her DH KeyAgreement object
         //System.out.println("ALICE: Initialization ...");
-        KeyAgreement aliceKeyAgree = KeyAgreement.getInstance("DH");
-        aliceKeyAgree.init(aliceKpair.getPrivate());
+        KeyAgreement serverKeyAgree = KeyAgreement.getInstance("DH");
+        serverKeyAgree.init(aliceKpair.getPrivate());
 
         // Alice encodes her public key, and sends it over to Bob.
-        byte[] alicePubKeyEnc = aliceKpair.getPublic().getEncoded();
+        byte[] serverPubKeyEnc = aliceKpair.getPublic().getEncoded();
 
         //for debugging purposes, let's print out Alice's encode public key
        // //System.out.println("Alice's Public Key for Transmit:");
         //System.out.println(toHexString(alicePubKeyEnc));
 
-        sendToClient(alicePubKeyEnc);
+        sendToClient(serverPubKeyEnc);
 
-        clientPubKeyEnc = ReadFromClient();
-        KeyFactory aliceKeyFactory = KeyFactory.getInstance("DH");
+        clientPubKeyEnc = readFromClient();
+        KeyFactory serverKeyFactory = KeyFactory.getInstance("DH");
         X509EncodedKeySpec x509KeySpec = new X509EncodedKeySpec(clientPubKeyEnc);
-        PublicKey bobPubKey = aliceKeyFactory.generatePublic(x509KeySpec);
+        PublicKey serverPubKey = serverKeyFactory.generatePublic(x509KeySpec);
         //System.out.println("ALICE: Execute PHASE1 ...");
-        aliceKeyAgree.doPhase(bobPubKey, true);
+        serverKeyAgree.doPhase(serverPubKey, true);
 
-        byte[] aliceSharedSecret = aliceKeyAgree.generateSecret(); // provide output buffer of required size
+        byte[] aliceSharedSecret = serverKeyAgree.generateSecret(); // provide output buffer of required size
 
         //System.out.println("The shared key is: " + toHexString(aliceSharedSecret));
-        SecretKeySpec bobAESKey = new SecretKeySpec(aliceSharedSecret, 0, 16, "AES");
+        SecretKeySpec secretAESKey = new SecretKeySpec(aliceSharedSecret, 0, 16, "AES");
 
         try {
-            bobCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            serverCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         } catch (NoSuchPaddingException ex) {
             Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
         }
-        bobCipher.init(Cipher.ENCRYPT_MODE, bobAESKey);
+        serverCipher.init(Cipher.ENCRYPT_MODE, secretAESKey);
         //send the IV
-        sendToClient(bobCipher.getParameters().getEncoded());
+        sendToClient(serverCipher.getParameters().getEncoded());
 
     }
     /**
@@ -192,7 +192,7 @@ public class ClientHandler extends Thread {
         byte[] encrypted = null;
         try {
             System.out.println("unicrpted data to send=> " + toHexString(bytestoencrypt));
-            encrypted = bobCipher.doFinal(bytestoencrypt);
+            encrypted = serverCipher.doFinal(bytestoencrypt);
             System.out.println("encrypted data=> " + toHexString(encrypted));
         } catch (Exception ex) {
             System.out.println("There was a error in encrypting that data");
@@ -228,7 +228,7 @@ public class ClientHandler extends Thread {
      * @return
      * @throws IOException 
      */
-    private byte[] ReadFromClient() throws IOException {
+    private byte[] readFromClient() throws IOException {
 
         byte[] clientData = null;
         BigInteger bi;
